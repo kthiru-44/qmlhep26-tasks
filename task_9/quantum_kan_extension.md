@@ -1,14 +1,14 @@
 # Quantum KAN Extension — Detailed Sketch
 
-> **Context**: This document proposes how to extend the classical SineKAN
-> (Reinhardt et al., 2024) to a quantum circuit implementation.
-> Written for GSoC 2026 (QMLHEP) — this is a research sketch, not a full implementation.
+**Context**: 
+This document proposes how to extend the classical SineKAN (Reinhardt et al., 2024) to a quantum circuit implementation, specifically targeted at High Energy Physics (HEP) applications at the CERN LHC.
+
+Written for GSoC 2026 (QMLHEP) 
 
 ---
 
-## 1. Why SineKAN → Quantum is a Natural Fit
+## 1. SineKAN → Quantum is a Natural Fit
 
-The core insight is surprisingly clean:
 
 | Classical SineKAN | Quantum Circuit |
 |---|---|
@@ -17,16 +17,9 @@ The core insight is surprisingly clean:
 | Learnable coefficients $a_k, b_k$ | Learnable rotation angles in variational layers |
 | Summation over edges | Measurement expectation values |
 
-A qubit's state after a rotation gate $R_Y(\theta)$ is:
 
-$$R_Y(\theta)|0\rangle = \cos(\theta/2)|0\rangle + \sin(\theta/2)|1\rangle$$
-
-The **measurement probabilities** are literally $\cos^2(\theta/2)$ and $\sin^2(\theta/2)$.
-So quantum circuits natively compute trigonometric functions of their parameters — exactly
-what SineKAN needs.
-
-This is **not** a coincidence. It's why SineKAN is the natural classical precursor to a
-quantum KAN, and why it's a stronger starting point than B-spline KAN for quantum extension.
+Quantum circuits natively compute trigonometric functions of their parameters.     
+Hence , SineKAN is a stronger starting point than B-spline KAN for quantum extension.
 
 ---
 
@@ -36,51 +29,27 @@ quantum KAN, and why it's a stronger starting point than B-spline KAN for quantu
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     QUANTUM KAN CIRCUIT                            │
+│                     QUANTUM KAN CIRCUIT                             |
 │                                                                     │
-│  ┌──────────────┐   ┌──────────────────┐   ┌──────────────────┐    │
-│  │   ENCODING   │   │  VARIATIONAL KAN │   │   MEASUREMENT    │    │
-│  │    LAYER     │──►│     LAYERS       │──►│     LAYER        │    │
-│  │              │   │  (× L repeats)   │   │                  │    │
-│  └──────────────┘   └──────────────────┘   └──────────────────┘    │
+│  ┌──────────────┐   ┌──────────────────┐   ┌──────────────────┐     │
+│  │   ENCODING   │   │  VARIATIONAL KAN │   │   MEASUREMENT    │     │
+│  │    LAYER     │──►│     LAYERS       │──►│     LAYER        │     │
+│  │              │   │  (× L repeats)   │   │                  │     │
+│  └──────────────┘   └──────────────────┘   └──────────────────┘     │
 │                                                                     │
 │  Classical input    Quantum KAN edges      Expectation values       │
-│  x → angles         φ(x) on edges         → class probabilities    │
+│  x → angles         φ(x) on edges         → class probabilities     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Detailed Circuit Diagram
+### 2.2 Quantum Circuit Structure
 
-For a small example: 4 input features, 2 variational KAN layers, 2 output classes.
+Instead of explicitly drawing the circuit, the architecture can be understood as a sequence of operations on $N$ qubits:
 
-```
-q₀: ─ Rx(x₀) ─ Ry(x₀) ─┤ KAN Layer 1              ├─┤ KAN Layer 2              ├─ ⟨Z₀⟩
-                          │                           │ │                           │
-q₁: ─ Rx(x₁) ─ Ry(x₁) ─┤  ┌────────────────────┐  ├─┤  ┌────────────────────┐  ├─ ⟨Z₁⟩
-                          │  │ Edge functions:    │  │ │  │ Edge functions:    │  │
-q₂: ─ Rx(x₂) ─ Ry(x₂) ─┤  │ Ry(a₁·sin(k·θ))  │  ├─┤  │ Ry(a₁·sin(k·θ))  │  ├─
-                          │  │ Rz(b₁·cos(k·θ))  │  │ │  │ Rz(b₁·cos(k·θ))  │  │
-q₃: ─ Rx(x₃) ─ Ry(x₃) ─┤  │ + CNOT entangling │  ├─┤  │ + CNOT entangling │  ├─
-                          │  └────────────────────┘  │ │  └────────────────────┘  │
-                          └───────────────────────────┘ └───────────────────────────┘
-
-         ENCODING              VARIATIONAL KAN              MEASUREMENT
-       (angle embed)        (learnable edge functions)     (expectation values)
-```
-
-### 2.3 Expanded Single KAN Layer (4 qubits)
-
-```
-q₀: ──Ry(a₁₀·sin(θ₀))──Rz(b₁₀·cos(θ₀))──●─────────────────────────Ry(a₂₀·sin(2θ₀))──
-q₁: ──Ry(a₁₁·sin(θ₁))──Rz(b₁₁·cos(θ₁))──X──●──────────────────────Ry(a₂₁·sin(2θ₁))──
-q₂: ──Ry(a₁₂·sin(θ₂))──Rz(b₁₂·cos(θ₂))─────X──●───────────────────Ry(a₂₂·sin(2θ₂))──
-q₃: ──Ry(a₁₃·sin(θ₃))──Rz(b₁₃·cos(θ₃))────────X───────────────────Ry(a₂₃·sin(2θ₃))──
-      ╰──── edge functions (k=1) ──────╯  ╰─ entangling ─╯          ╰─ edge (k=2) ───╯
-```
-
-Each `θᵢ` comes from the encoding of classical input `xᵢ`.
-The `aₖᵢ` and `bₖᵢ` are **trainable parameters** — these are the quantum analogues
-of the SineKAN Fourier coefficients.
+1. **Input Encoding**: Each classical feature $x_i$ is mapped to a rotation angle on qubit $i$ using $R_X$ and $R_Y$ gates.
+2. **Edge Functions**: The trainable parameters $a_k$ and $b_k$ are applied as $R_Y$ and $R_Z$ rotations on the data-encoded states. A single edge with frequency $k$ looks like $R_Y(a_k \sin(\theta)) R_Z(b_k \cos(\theta))$.
+3. **Entanglement (Optional)**: CNOT gates can optionally entangle adjacent qubits to mix information across different input features.
+4. **Repetition**: Steps 1 and 2 are repeated for each frequency $k=1, \ldots, K$ to build up the full SineKAN Fourier series.
 
 ---
 
@@ -99,11 +68,10 @@ for i in range(n_qubits):
     qml.RY(x[i], wires=i)
 ```
 
-For MNIST, we'd need dimensionality reduction first (784 → n_qubits).
+For HEP data (e.g., jet kinematics), we'd need dimensionality reduction first (e.g., $O(100)$ features $\to$ n_qubits).
 Options:
-- PCA to reduce 784 → 8-16 features
-- A classical pre-processing layer (linear projection)
-- Amplitude encoding (exponentially compact, but harder to implement)
+- Classical Autoencoder or PCA to reduce feature space $\to$ 8-16 features
+- Amplitude encoding (exponentially compact, but harder to implement on near-term hardware)
 
 ### 3.2 Variational KAN Layers (the core innovation)
 
@@ -114,32 +82,20 @@ In a standard VQC, parameterized gates are:
 Ry(θ)    ←  θ is a free parameter, independent of input
 ```
 
-In a **Quantum KAN layer**, the gate angles are **functions of the qubit state**:
+In a **Quantum KAN layer**, the gate angles are **functions of the data**:
 ```
-Ry(aₖ · sin(k · θ_in))    ←  angle depends on input through sin/cos
-Rz(bₖ · cos(k · θ_in))    ←  aₖ, bₖ are learnable, k is the frequency
+Ry(aₖ · sin(k · x_in))    ←  angle depends on input through sin/cos
+Rz(bₖ · cos(k · x_in))    ←  aₖ, bₖ are learnable, k is the frequency
 ```
 
 This is the key distinction: **each gate implements a learnable edge function**
 $\varphi(x) = a \sin(kx) + b \cos(kx)$, matching the classical SineKAN structure.
 
-The entangling CNOT gates between qubits serve as the **summation nodes** in the
-KAN graph — they mix information between edges, analogous to the aggregation step
-$y_j = \sum_i \varphi_{ij}(x_i)$ in the classical KAN.
+**Node Aggregation (The Safe Route):**
+To mimic the aggregation step $y_j = \sum_i \varphi_{ij}(x_i)$, the most robust near-term approach is **classical summation**: calculate the expectation value of each quantum edge independently, and sum them linearly in PyTorch. 
 
-```python
-# PennyLane pseudocode for one KAN layer
-def quantum_kan_layer(weights_a, weights_b, n_qubits, K):
-    # Edge functions: parameterized sin/cos rotations
-    for i in range(n_qubits):
-        for k in range(1, K + 1):
-            qml.RY(weights_a[i, k] * np.sin(k * qml.state(i)), wires=i)  # conceptual
-            qml.RZ(weights_b[i, k] * np.cos(k * qml.state(i)), wires=i)
-
-    # Entangling (summation analogue)
-    for i in range(n_qubits - 1):
-        qml.CNOT(wires=[i, i + 1])
-```
+**Node Aggregation (The Advanced Route):**
+Alternatively, entangling CNOT gates between qubits can serve as quantum summation nodes, mixing information between edges before measurement. This is more "quantum-native" but structurally harder to train.
 
 > **Important caveat**: In practice, we can't directly read qubit state mid-circuit.
 > Instead, `θ_in` would come from the encoding layer's angles or from a
@@ -205,118 +161,41 @@ This is the critical question. Here's the honest comparison:
 
 ---
 
-## 5. Practical Architecture for MNIST
+## 5. Practical Architecture for HEP Applications
 
-Given current hardware constraints (noisy qubits, limited connectivity):
+Given current hardware constraints (noisy qubits, limited connectivity), processing raw LHC detector data with a pure quantum KAN is impossible. 
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                Hybrid Quantum-Classical KAN             │
-│                                                         │
-│  ┌───────────┐    ┌──────────────┐    ┌──────────────┐ │
-│  │ Classical  │    │   Quantum    │    │  Classical   │ │
-│  │ Encoder   │───►│  KAN Core    │───►│  Decoder     │ │
-│  │           │    │              │    │              │ │
-│  │ 784 → 8  │    │  8 qubits    │    │  8 → 10     │ │
-│  │ (Linear)  │    │  L=3 layers  │    │  (Linear)    │ │
-│  └───────────┘    └──────────────┘    └──────────────┘ │
-│                                                         │
-│  Trainable          Trainable           Trainable       │
-│  classically        hybrid              classically     │
-└─────────────────────────────────────────────────────────┘
-```
+We propose a **Hybrid Quantum-Classical architecture** for HEP event classification:
+1. **Classical Encoder**: A standard neural network or PCA reduces the high-dimensional detector signals (e.g., track kinematics, tower energies) to a small number of latent features (e.g., 8-12 features).
+2. **Quantum KAN Core**: An 8-to-12 qubit quantum KAN circuit processes these compressed features, applying the learnable SineKAN edge functions over $L=3$ layers to capture complex, non-linear correlations between the physical features.
+3. **Classical Decoder**: The expectation values from the qubits are fed into a final classical linear-layer classifier to produce the event classification probabilities.
 
-**Why hybrid**:
-- 784 qubits is impossible on current hardware
-- Classical encoder compresses to manageable qubit count
-- Quantum core provides the KAN-specific learnable edge functions
-- Classical decoder maps qubit measurements to 10 class logits
+This isolates the quantum component to where it might genuinely provide an inductive bias (the KAN edge functions) while keeping the overall model trainable on real CERN datasets.
 
----
 
-## 6. Open Research Questions (GSoC Investigation)
+## Assessment
 
-### 6.1 Expressibility
-- Does the quantum KAN's Hilbert space structure give it an advantage in
-  expressibility over the classical SineKAN?
-- Can we prove or empirically show that fewer frequencies $K$ are needed in the
-  quantum version compared to classical?
+### Interesting Finds :
+- The sin/cos to  rotation gate mapping is elegant and mathematically natural
 
-### 6.2 Trainability
-- Do quantum KAN layers suffer from **barren plateaus** (vanishing gradients in
-  high-dimensional parameter spaces)?
-- Does the structured sine/cosine parameterization help avoid barren plateaus
-  compared to arbitrary VQC rotations? (Hypothesis: yes, because the Fourier
-  structure constrains the loss landscape)
+- SineKAN's Fourier structure could constrain quantum circuits in useful ways
 
-### 6.3 Entanglement's Role
-- In classical KAN, node aggregation is simple summation. In quantum KAN,
-  entanglement gates create non-trivial correlations.
-- **Question**: Does the entanglement structure need to mirror the KAN graph
-  topology, or can arbitrary entanglement patterns work?
-- What's the minimum entanglement needed for quantum advantage?
+### Concerns :
+- Current quantum hardware is noisy with limited qubits .
 
-### 6.4 Scalability
-- How does performance scale with number of qubits, layers, and frequencies?
-- What's the trade-off between quantum circuit depth and accuracy?
-- Can techniques like **circuit cutting** or **tensor network methods** help scale?
-
-### 6.5 Classical Simulation Barrier
-- At what qubit count does the quantum KAN become classically intractable?
-- Can we identify a regime where quantum KAN provably outperforms classical KAN?
-
-### 6.6 Noise Robustness
-- How do gate errors affect the learned sine/cosine coefficients?
-- Are SineKAN-style parameterizations more or less noise-robust than standard VQC?
-
----
-
-## 7. What I'd Investigate in GSoC
-
-**Phase 1 (Weeks 1-4): Foundation**
-- Implement the quantum KAN layer in PennyLane
-- Start with a toy problem (e.g., function approximation, not full MNIST)
-- Compare expressibility vs classical SineKAN on 2-3 qubit systems
-- Validate that the KAN structure is genuinely preserved in the quantum circuit
-
-**Phase 2 (Weeks 5-8): MNIST Pilot**
-- Build the full hybrid pipeline: classical encoder → quantum KAN → classical decoder
-- Test on MNIST with 4-8 qubits (simulator)
-- Benchmark against: (a) classical SineKAN, (b) standard VQC, (c) random baseline
-- Study gradient landscapes (barren plateau analysis)
-
-**Phase 3 (Weeks 9-12): Analysis & Writing**
-- Investigate the open questions from Section 6
-- Noise simulation to assess hardware readiness
-- Write up findings, contribute to the QMLHEP codebase
-- Document what worked, what didn't, and future directions
-
----
-
-## 8. Honest Assessment
-
-**What excites me**:
-- The sin/cos → rotation gate mapping is elegant and mathematically natural
-- SineKAN's Fourier structure could genuinely constrain quantum circuits in useful ways
-- There's a real research gap here — quantum KANs are largely unexplored
-
-**What concerns me**:
-- Current quantum hardware is noisy with limited qubits — we're stuck in simulator territory
-- The classical encoding bottleneck (784 → 8 qubits) may wash out any quantum advantage
-- It's unclear if the "KAN-ness" survives the quantum translation, or if we end up
-  with just another VQC with sine-parameterized angles
+- It's unclear if KAN survives the quantum translation with efficiency .
 - Barren plateaus could make training intractable for deeper circuits
 
-**What I'd want to learn from my mentors**:
-- How to rigorously define "KAN-like" in the quantum context
-- Their insights from the SineKAN paper on which properties are most important to preserve
-- Whether the Fourier structure helps with trainability (their intuition would be invaluable)
+### Learning Opportunity :
+- How to rigorously define SineKAN in the quantum context.
 
----
+- Your insights from the SineKAN paper on which properties are most important to preserve
+- Whether the Fourier structure helps with trainability
+
 
 ## References
 
-1. Liu et al., "KAN: Kolmogorov-Arnold Networks" (2024). [arXiv:2404.19756](https://arxiv.org/abs/2404.19756)
-2. Reinhardt et al., "SineKAN: Kolmogorov-Arnold Networks Using Sinusoidal Activation Functions" (2024). [arXiv:2407.04149](https://arxiv.org/abs/2407.04149)
-3. Pérez-Salinas et al., "Data re-uploading for a universal quantum classifier" (2020). Quantum 4, 226.
-4. McClean et al., "Barren plateaus in quantum neural network training landscapes" (2018). Nature Communications 9, 4812.
+1. Liu et al., "KAN: Kolmogorov-Arnold Networks" . [arXiv:2404.19756](https://arxiv.org/abs/2404.19756)
+2. Reinhardt et al., "SineKAN: Kolmogorov-Arnold Networks Using Sinusoidal Activation Functions" . [arXiv:2407.04149](https://arxiv.org/abs/2407.04149)
+3. Pérez-Salinas et al., "Data re-uploading for a universal quantum classifier". Quantum 4, 226.
+4. McClean et al., "Barren plateaus in quantum neural network training landscapes" . Nature Communications 9, 4812.
