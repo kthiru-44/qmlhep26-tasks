@@ -12,10 +12,9 @@ Written for GSoC 2026 (QMLHEP)
 
 | Classical SineKAN | Quantum Circuit |
 |---|---|
-| $\sin(k \cdot x)$ | $R_Y(k \cdot x)$ rotation gate |
-| $\cos(k \cdot x)$ | $R_Z(k \cdot x)$ rotation gate |
-| Learnable coefficients $a_k, b_k$ | Learnable rotation angles in variational layers |
-| Summation over edges | Measurement expectation values |
+| sin(k · x), cos(k · x) | Expectation values from rotation gates (e.g., Rx, Rz) |
+| Learnable coefficients a's, b's | Trainable rotation parameters in variational layers |
+| Summation over edges | Measurement expectation values + classical aggregation |
 
 
 Quantum circuits natively compute trigonometric functions of their parameters.     
@@ -115,6 +114,13 @@ Each quantum subcircuit corresponds directly to a KAN edge function, preserving 
 **Hardware Feasibility**  
 The architecture relies on shallow circuits composed primarily of rotation gates and limited entanglement, making it compatible with near-term quantum hardware.
 
+## Advantage Hypothesis
+
+We hypothesize that a QKAN with L data re-uploading layers can approximate a SineKAN edge function with K = 2L Fourier components using fewer trainable parameters.
+
+This is enabled by quantum rotation gates naturally producing both sine and cosine components, reducing parameter redundancy.
+
+This hypothesis will be tested empirically against classical SineKAN baselines using AUC-ROC and parameter efficiency metrics.
 
 ## Expected Research Contributions
 
